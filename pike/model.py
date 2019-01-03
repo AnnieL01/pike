@@ -64,6 +64,8 @@ import transport
 import ntstatus
 import digest
 
+import pdb
+
 default_credit_request = 10
 default_timeout = 30
 trace = False
@@ -279,6 +281,7 @@ class Client(object):
         self._lease_break_queue = []
         self._connections = []
         self._leases = {}
+
 
         self.logger = logging.getLogger('pike')
 
@@ -1389,8 +1392,10 @@ class Channel(object):
                         create_guid=create_guid,
                         prev=prev_open))
         create_req.open_future = open_future
+        
+        
+        
         create_req.finish = finish
-
         return create_req
 
     def create_submit(self, create_req):
@@ -1710,7 +1715,6 @@ class Channel(object):
         ioctl_req = smb2.IoctlRequest(smb_req)
         vni_req = smb2.ValidateNegotiateInfoRequest(ioctl_req)
         client = self.session.client
-
         # Validate negotiate must always be signed
         smb_req.flags |= smb2.SMB2_FLAGS_SIGNED
         ioctl_req.flags = smb2.SMB2_0_IOCTL_IS_FSCTL
@@ -1718,20 +1722,42 @@ class Channel(object):
         vni_req.client_guid = client.client_guid
         vni_req.security_mode = client.security_mode
         vni_req.dialects = client.dialects
-
         res = self.connection.transceive(smb_req.parent)[0]
-
         return res
 
     def resume_key(self, file):
         smb_req = self.request(obj=file.tree)
         ioctl_req = smb2.IoctlRequest(smb_req)
         resumekey_req = smb2.RequestResumeKeyRequest(ioctl_req)
-
         ioctl_req.file_id = file.file_id
         ioctl_req.flags |= smb2.SMB2_0_IOCTL_IS_FSCTL
+        return self.connection.transceive(smb_req.parent)[0]
+
+    def queryfile_sessionconn(self, file,*args):
+        smb_req = self.request(obj=file.tree)
+        ioctl_req = smb2.IoctlRequest(smb_req)
+        queryfile_req = smb2.SrvQueryfileSessionconn(ioctl_req)
+        ioctl_req.file_id = file.file_id
+        ioctl_req.max_output_response = args[0]
+        ioctl_req.flags |= smb2.SMB2_0_IOCTL_IS_FSCTL
+
 
         return self.connection.transceive(smb_req.parent)[0]
+
+
+    def timeout_resiliency(self, file,timeout):
+
+        smb_req = self.request(obj=file.tree)
+        ioctl_req = smb2.IoctlRequest(smb_req)
+
+        vni_req = smb2.ExcuteTimeoutResiliencyRequest(ioctl_req)
+        ioctl_req.file_id = file.file_id
+        ioctl_req.max_output_response = 4096
+        ioctl_req.flags = smb2.SMB2_0_IOCTL_IS_FSCTL
+        vni_req.Timeout = timeout
+        vni_req.Reserved = 0
+        res = self.connection.transceive(smb_req.parent)[0]
+        return res
 
     def copychunk_request(self, source_file, target_file, chunks):
         """
