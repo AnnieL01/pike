@@ -276,3 +276,30 @@ class Persistent(test.PikeTest):
         self.assertFalse(handle3.is_resilient)
         self.assertEqual(handle1.file_id, handle3.file_id)
         self.channel.close(handle3)
+        
+      def test_resilient_ceiling_timeout(self):
+        chan, tree = self.tree_connect()
+        handle1 = self.create_persistent()
+        timeout = 300001
+        wait_time = timeout/1000.0
+        with self.assert_error(pike.ntstatus.STATUS_INVALID_PARAMETER):
+            a = self.channel.network_resiliency_request(handle1, timeout = timeout)
+        self.channel.connection.close()
+
+        self.channel, self.tree = self.tree_connect(client=pike.model.Client())
+        with self.assert_error(ntstatus.STATUS_FILE_NOT_AVAILABLE):
+            handle2 = self.channel.create(self.tree,
+                                          'persistent002.txt',
+                                          access=smb2.FILE_READ_DATA,
+                                          share=SHARE_ALL,
+                                          disposition=pike.smb2.FILE_OPEN).result()
+
+        self.channel.connection.close()
+
+        self.channel, self.tree = self.tree_connect()
+        handle3 = self.create_persistent(prev_handle=handle1)
+        self.assertTrue(handle1.is_persistent)
+        self.assertTrue(handle3.is_persistent)
+        self.assertFalse(handle3.is_resilient)
+        self.assertEqual(handle1.file_id, handle3.file_id)
+        self.channel.close(handle3)
