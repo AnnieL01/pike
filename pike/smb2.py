@@ -1671,6 +1671,7 @@ class CloseResponse(Response):
 class FileInformationClass(core.ValueEnum):
     FILE_DIRECTORY_INFORMATION = 1
     FILE_FULL_DIRECTORY_INFORMATION = 2
+    FILE_SEC_INFO = 0
     FILE_BASIC_INFORMATION = 4
     FILE_STANDARD_INFORMATION = 5
     FILE_INTERNAL_INFORMATION = 6
@@ -1709,6 +1710,10 @@ class FileSystemInformationClass(core.ValueEnum):
 
 FileSystemInformationClass.import_items(globals())
 
+# add Infolevels for SMB2_CLASS_SEC_INFO
+class FileSecurityInformationClass(core.ValueEnum):
+    FILE_SEC_INFO = 0
+FileSystemInformationClass.import_items(globals())
 
 class QueryDirectoryRequest(Request):
     command_id = SMB2_QUERY_DIRECTORY
@@ -1818,6 +1823,36 @@ class QueryInfoRequest(Request):
         self.info_type = None
         self.file_information_class = 0
         self.additional_information = 0
+        self.flags = 0
+        self.file_id = None
+        self.output_buffer_length = 4096
+
+    def _encode(self, cur):
+        cur.encode_uint8le(self.info_type)
+        cur.encode_uint8le(self.file_information_class)
+        cur.encode_uint32le(self.output_buffer_length)
+
+        # We're not implementing the input buffer support right now
+        cur.encode_uint16le(0)
+        cur.encode_uint16le(0)  # Reserved
+
+        # We're not implementing the input buffer support right now
+        cur.encode_uint32le(0)
+
+        cur.encode_uint32le(self.additional_information)
+        cur.encode_uint32le(self.flags)
+        cur.encode_uint64le(self.file_id[0])
+        cur.encode_uint64le(self.file_id[1])
+
+class AclInfoRequest(Request):
+    command_id = SMB2_QUERY_INFO
+    structure_size = 41
+
+    def __init__(self, parent):
+        Request.__init__(self, parent)
+        self.info_type = None
+        self.file_information_class = 0
+        self.additional_information = 4
         self.flags = 0
         self.file_id = None
         self.output_buffer_length = 4096
@@ -1980,9 +2015,24 @@ class Information(core.Frame):
 class FileInformation(Information):
     info_type = SMB2_0_INFO_FILE
 
+@QueryDirectoryResponse.file_information
+@QueryInfoResponse.information
+class FileSecurity(Information):
+    info_type = SMB2_0_INFO_SECURITY
+
 @QueryInfoResponse.information
 class FileSystemInformation(Information):
     info_type = SMB2_0_INFO_FILESYSTEM
+
+class FileSecurityInformation(FileSecurity):
+    file_information_class = FILE_SEC_INFO
+
+    def __init__(self, parent = None):
+        FileSecurity.__init__(self, parent)
+        self.access_flags = 0
+
+    def _decode(self, cur):
+        self.access_flags = Access(cur.decode_uint32le())
 
 class FileAccessInformation(FileInformation):
     file_information_class = FILE_ACCESS_INFORMATION
@@ -2034,6 +2084,7 @@ class FileAllInformation(FileInformation):
         self.mode_information = FileModeInformation()
         self.alignment_information = FileAlignmentInformation()
         self.name_information = FileNameInformation()
+        self.acls_information = FileAclsInformation()
 
     def _decode(self, cur):
         for field in self.fields:
@@ -2223,7 +2274,34 @@ class FileBasicInformation(FileInformation):
         cur.encode_uint32le(self.file_attributes)
         # Ignore the 4-byte reserved field
         cur.encode_uint32le(0)
+class FileAclsInformation(FileInformation):
+    file_information_class = FILE_SEC_INFO
 
+    def __init__(self, parent = None):
+        FileInformation.__init__(self, parent)
+        self.creation_time = 0
+        self.last_access_time = 0
+        self.last_write_time = 0
+        self.change_time = 0
+        self.file_attributes = 0
+
+    def _decode(self, cur):
+        self.creation_time = nttime.NtTime(cur.decode_uint64le())
+        self.last_access_time = nttime.NtTime(cur.decode_uint64le())
+        self.last_write_time = nttime.NtTime(cur.decode_uint64le())
+        self.change_time = nttime.NtTime(cur.decode_uint64le())
+        self.file_attributes = FileAttributes(cur.decode_uint32le())
+        # Ignore the 4-byte reserved field
+        cur.decode_uint32le()
+
+    def _encode(self, cur):
+        cur.encode_uint64le(self.creation_time)
+        cur.encode_uint64le(self.last_access_time)
+        cur.encode_uint64le(self.last_write_time)
+        cur.encode_uint64le(self.change_time)
+        cur.encode_uint32le(self.file_attributes)
+        # Ignore the 4-byte reserved field
+        cur.encode_uint32le(0)
 
 class FileNetworkOpenInformation(FileInformation):
     file_information_class = FILE_NETWORK_OPEN_INFORMATION

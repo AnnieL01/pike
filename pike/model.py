@@ -1539,6 +1539,24 @@ class Channel(object):
             query_req.additional_information = additional_information
         return query_req
 
+    def alcs_file_info_request(
+            self,
+            create_res,
+            file_information_class=smb2.FILE_SEC_INFO,
+            info_type=smb2.SMB2_0_INFO_SECURITY,
+            output_buffer_length=4096,
+            additional_information=None):
+        smb_req = self.request(obj=create_res)
+        query_req = smb2.AclInfoRequest(smb_req)
+
+        query_req.info_type = info_type
+        query_req.file_information_class = file_information_class
+        query_req.file_id = create_res.file_id
+        query_req.output_buffer_length = output_buffer_length
+        if additional_information:
+            query_req.additional_information = additional_information
+        return query_req
+
     def query_file_info(self,
                         create_res,
                         file_information_class=smb2.FILE_BASIC_INFORMATION,
@@ -1547,6 +1565,19 @@ class Channel(object):
                         additional_information=None):
         return self.connection.transceive(
                 self.query_file_info_request(
+                    create_res,
+                    file_information_class,
+                    info_type,
+                    output_buffer_length,
+                    additional_information).parent.parent)[0][0][0]
+    def acls_file_info(self,
+                        create_res,
+                        file_information_class=smb2.FILE_SEC_INFO,
+                        info_type=smb2.SMB2_0_INFO_SECURITY,
+                        output_buffer_length=4096,
+                        additional_information=None):
+        return self.connection.transceive(
+                self.alcs_file_info_request(
                     create_res,
                     file_information_class,
                     info_type,
@@ -1743,6 +1774,10 @@ class Channel(object):
         ioctl_req.flags |= smb2.SMB2_0_IOCTL_IS_FSCTL
 
         return self.connection.transceive(smb_req.parent)[0]
+
+    def Alcs_getinfo(self, file):
+        smb_req = self.request(obj=file.tree)
+
 
     def network_resiliency_request_request(self, file, timeout):
         smb_req = self.request(obj=file.tree)
