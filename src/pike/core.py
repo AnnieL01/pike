@@ -251,8 +251,10 @@ class Cursor(object):
     def encode_int64le(self, val):
         self.encode_struct("<q", val)
 
+
     def encode_utf16le(self, val):
-        self.encode_bytes(str(val).encode("utf-16le"))
+        self.encode_bytes(str(val).encode("utf-16le", errors="surrogatepass"))
+
 
     def trunc(self):
         self._expand_to(self.offset)
